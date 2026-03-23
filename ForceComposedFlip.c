@@ -1,0 +1,643 @@
+/*
+ * ForceComposedFlip.c
+ *
+ * Forces DWM to use Composed Flip instead of Independent Flip, making
+ * DLSS Frame Generation interpolated frames visible to screen capture
+ * APIs (Sunshine/Moonlight streaming).
+ *
+ * Two mechanisms work together:
+ *   1. An invisible 1x1 pixel topmost overlay window that prevents DWM
+ *      from using Independent Flip (the overlay forces composition).
+ *   2. A registry toggle to disable Multiplane Overlay (MPO), which can
+ *      otherwise bypass the composition chain even with the overlay present.
+ *
+ * See README.md for full documentation.
+ * License: GPLv3
+ */
+
+#define WIN32_LEAN_AND_MEAN
+
+#include <windows.h>
+#include <shellapi.h>
+
+/* ─── Constants ─────────────────────────────────────────────────────── */
+
+/* Timer IDs used with SetTimer/KillTimer */
+#define TIMER_REASSERT_TOPMOST  1   /* Re-assert overlay z-order every 500ms */
+#define TIMER_CHECK_FOREGROUND  2   /* Poll foreground window every 2000ms   */
+#define TIMER_RECREATE_OVERLAY  3   /* One-shot 500ms delay for recreation   */
+
+/* Timer intervals in milliseconds */
+#define INTERVAL_REASSERT       500
+#define INTERVAL_FOREGROUND     2000
+#define INTERVAL_RECREATE       500
+
+/* Custom window message for system tray icon events */
+#define WM_TRAYICON             (WM_APP + 1)
+
+/* Menu item IDs for the tray context menu */
+#define IDM_RECREATE            1001
+#define IDM_DISABLE_MPO         1002
+#define IDM_ENABLE_MPO          1003
+#define IDM_EXIT                1004
+
+/* Mutex name to enforce single instance */
+#define MUTEX_NAME              L"ForceComposedFlip_SingleInstance"
+
+/* Window class names */
+#define CLASS_MAIN              L"ForceComposedFlipMain"
+#define CLASS_OVERLAY           L"ForceComposedFlipOverlay"
+
+/* SetWindowPos flags: SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE */
+#define SWP_TOPMOST_FLAGS       (SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE)
+
+/* ─── Global State ──────────────────────────────────────────────────── */
+
+static HWND g_hwndMain      = NULL;  /* Hidden message window (timers, tray)  */
+static HWND g_hwndOverlay   = NULL;  /* The invisible topmost overlay         */
+static HWND g_lastForeground = NULL; /* Last known foreground window handle   */
+static HICON g_hIcon        = NULL;  /* Tray icon handle (embedded resource)      */
+static NOTIFYICONDATAW g_nid;        /* System tray icon data                 */
+
+/* ─── Forward Declarations ──────────────────────────────────────────── */
+
+static LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
+static LRESULT CALLBACK OverlayWndProc(HWND, UINT, WPARAM, LPARAM);
+static void CreateOverlay(void);
+static void DestroyOverlay(void);
+static void RecreateOverlay(void);
+static void ReassertTopmost(void);
+static void CheckForeground(void);
+static void SetupTrayIcon(void);
+static void RemoveTrayIcon(void);
+static void ShowContextMenu(void);
+static void UpdateTooltip(const WCHAR *text);
+static BOOL RunElevated(const WCHAR *params);
+static void SetMPO(BOOL disable);
+static void CleanExit(void);
+
+/* ─── Entry Point ───────────────────────────────────────────────────── */
+
+int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
+                    LPWSTR lpCmdLine, int nCmdShow)
+{
+    (void)hPrevInstance;
+    (void)lpCmdLine;
+    (void)nCmdShow;
+
+    /*
+     * Enforce single instance: create a named mutex. If it already exists,
+     * another instance is running — exit immediately.
+     * This mirrors AHK's #SingleInstance Force directive.
+     */
+    HANDLE hMutex = CreateMutexW(NULL, TRUE, MUTEX_NAME);
+    if (GetLastError() == ERROR_ALREADY_EXISTS) {
+        if (hMutex) CloseHandle(hMutex);
+        return 0;
+    }
+
+    /*
+     * Register the main (hidden) window class.
+     * This window never becomes visible — it exists solely to receive
+     * timer messages (WM_TIMER) and tray icon events (WM_TRAYICON).
+     */
+    WNDCLASSEXW wc = {0};
+    wc.cbSize        = sizeof(wc);
+    wc.lpfnWndProc   = WndProc;
+    wc.hInstance      = hInstance;
+    wc.lpszClassName  = CLASS_MAIN;
+    RegisterClassExW(&wc);
+
+    /*
+     * Register the overlay window class.
+     * The overlay is a separate window with its own (minimal) WndProc.
+     * It uses a black background brush so the 1x1 pixel is black
+     * (irrelevant visually at 1/255 opacity, but required by the API).
+     */
+    WNDCLASSEXW wcOverlay = {0};
+    wcOverlay.cbSize        = sizeof(wcOverlay);
+    wcOverlay.lpfnWndProc   = OverlayWndProc;
+    wcOverlay.hInstance      = hInstance;
+    wcOverlay.hbrBackground  = (HBRUSH)GetStockObject(BLACK_BRUSH);
+    wcOverlay.lpszClassName  = CLASS_OVERLAY;
+    RegisterClassExW(&wcOverlay);
+
+    /* Create the hidden message window */
+    g_hwndMain = CreateWindowExW(
+        0, CLASS_MAIN, L"ForceComposedFlip",
+        WS_OVERLAPPEDWINDOW,
+        0, 0, 0, 0,
+        NULL, NULL, hInstance, NULL
+    );
+
+    if (!g_hwndMain) {
+        CloseHandle(hMutex);
+        return 1;
+    }
+
+    /* Set up the system tray icon with gamepad icon and tooltip */
+    SetupTrayIcon();
+
+    /* Create the overlay immediately */
+    CreateOverlay();
+
+    /*
+     * Start the two recurring timers:
+     *
+     *   TIMER_REASSERT_TOPMOST (500ms):
+     *     Periodically re-asserts the overlay as topmost. Critical because
+     *     FSO (Fullscreen Optimizations) games sit on a higher z-band than
+     *     normal HWND_TOPMOST windows, so periodic re-assertion ensures
+     *     DWM keeps the overlay in the composition chain.
+     *
+     *   TIMER_CHECK_FOREGROUND (2000ms):
+     *     Polls the foreground window and recreates the overlay when it
+     *     changes (e.g., a game launches or regains focus), ensuring the
+     *     overlay is above the new window in the z-order.
+     */
+    SetTimer(g_hwndMain, TIMER_REASSERT_TOPMOST, INTERVAL_REASSERT, NULL);
+    SetTimer(g_hwndMain, TIMER_CHECK_FOREGROUND, INTERVAL_FOREGROUND, NULL);
+
+    /*
+     * Main message loop — the heart of any Win32 GUI application.
+     * GetMessage blocks until a message arrives, then DispatchMessage
+     * routes it to the appropriate WndProc. This loop runs until
+     * PostQuitMessage is called (from CleanExit via WM_DESTROY).
+     */
+    MSG msg;
+    while (GetMessage(&msg, NULL, 0, 0)) {
+        TranslateMessage(&msg);
+        DispatchMessage(&msg);
+    }
+
+    /* Cleanup */
+    CloseHandle(hMutex);
+    return (int)msg.wParam;
+}
+
+/* ─── Main Window Procedure ─────────────────────────────────────────── */
+
+/*
+ * Handles all messages for the hidden main window:
+ *   WM_TIMER:    Dispatches timer events to the appropriate handler
+ *   WM_TRAYICON: Responds to clicks on the system tray icon
+ *   WM_COMMAND:  Handles context menu item selections
+ *   WM_DESTROY:  Performs cleanup before the application exits
+ */
+static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam,
+                                LPARAM lParam)
+{
+    switch (msg) {
+
+    case WM_TIMER:
+        switch (wParam) {
+        case TIMER_REASSERT_TOPMOST:
+            ReassertTopmost();
+            break;
+        case TIMER_CHECK_FOREGROUND:
+            CheckForeground();
+            break;
+        case TIMER_RECREATE_OVERLAY:
+            /*
+             * One-shot timer: fired 500ms after DestroyOverlay to complete
+             * the recreation sequence. Kill it immediately so it doesn't
+             * repeat. See RecreateOverlay() for why this delay exists.
+             */
+            KillTimer(hwnd, TIMER_RECREATE_OVERLAY);
+            CreateOverlay();
+            UpdateTooltip(NULL); /* Update tooltip with current timestamp */
+            break;
+        }
+        return 0;
+
+    case WM_TRAYICON:
+        /*
+         * The tray icon sends us this custom message when the user
+         * interacts with it. lParam contains the actual mouse message.
+         * We show the context menu on right-click.
+         */
+        if (LOWORD(lParam) == WM_RBUTTONUP) {
+            ShowContextMenu();
+        }
+        return 0;
+
+    case WM_COMMAND:
+        /* Handle context menu item selections */
+        switch (LOWORD(wParam)) {
+        case IDM_RECREATE:
+            RecreateOverlay();
+            break;
+        case IDM_DISABLE_MPO:
+            SetMPO(TRUE);
+            break;
+        case IDM_ENABLE_MPO:
+            SetMPO(FALSE);
+            break;
+        case IDM_EXIT:
+            CleanExit();
+            break;
+        }
+        return 0;
+
+    case WM_DESTROY:
+        PostQuitMessage(0);
+        return 0;
+    }
+
+    return DefWindowProcW(hwnd, msg, wParam, lParam);
+}
+
+/* ─── Overlay Window Procedure ──────────────────────────────────────── */
+
+/*
+ * Minimal WndProc for the overlay window. It only needs to handle
+ * WM_DESTROY and pass everything else to the default handler.
+ * The overlay never processes user input (WS_EX_TRANSPARENT makes it
+ * click-through) and has no UI elements.
+ */
+static LRESULT CALLBACK OverlayWndProc(HWND hwnd, UINT msg, WPARAM wParam,
+                                       LPARAM lParam)
+{
+    if (msg == WM_DESTROY) {
+        return 0;
+    }
+    return DefWindowProcW(hwnd, msg, wParam, lParam);
+}
+
+/* ─── Overlay Management ────────────────────────────────────────────── */
+
+/*
+ * Creates the invisible overlay window that forces DWM Composed Flip.
+ *
+ * The window has these critical properties:
+ *   WS_EX_TOPMOST:     Stays above all normal and most special windows
+ *   WS_EX_TOOLWINDOW:  Hidden from taskbar and Alt+Tab switcher
+ *   WS_EX_TRANSPARENT: Click-through — all mouse input passes through
+ *   WS_EX_LAYERED:     Required for per-window opacity via
+ *                       SetLayeredWindowAttributes
+ *   WS_POPUP:          No title bar, no borders, no system menu
+ *
+ *   Size: 1x1 pixel at position (0,0)
+ *   Opacity: 1/255 — nearly invisible but NOT fully transparent.
+ *     A fully transparent window (opacity 0) would be optimized out by DWM
+ *     and would not force composition. 1/255 is imperceptible to the eye
+ *     but sufficient to keep DWM compositing every frame.
+ *
+ * After creation, SetWindowPos is called with HWND_TOPMOST to ensure
+ * the window is at the very top of the z-order.
+ */
+static void CreateOverlay(void)
+{
+    if (g_hwndOverlay != NULL) {
+        return; /* Already exists */
+    }
+
+    HINSTANCE hInstance = GetModuleHandleW(NULL);
+
+    g_hwndOverlay = CreateWindowExW(
+        WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_TRANSPARENT | WS_EX_LAYERED,
+        CLASS_OVERLAY,
+        L"",            /* No window title */
+        WS_POPUP,       /* No decorations */
+        0, 0, 1, 1,     /* Position (0,0), size 1x1 pixel */
+        NULL, NULL, hInstance, NULL
+    );
+
+    if (!g_hwndOverlay) {
+        return;
+    }
+
+    /*
+     * Set window opacity to 1 out of 255.
+     * LWA_ALPHA tells the function to use the bAlpha parameter (third arg)
+     * as the window-wide opacity value.
+     */
+    SetLayeredWindowAttributes(g_hwndOverlay, 0, 1, LWA_ALPHA);
+
+    /* Show without activating (don't steal focus from the current app) */
+    ShowWindow(g_hwndOverlay, SW_SHOWNOACTIVATE);
+
+    /*
+     * Force topmost z-order via direct SetWindowPos call.
+     * HWND_TOPMOST places this above all non-topmost windows.
+     * Flags: SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE — only change z-order.
+     */
+    SetWindowPos(g_hwndOverlay, HWND_TOPMOST,
+                 0, 0, 1, 1, SWP_TOPMOST_FLAGS);
+}
+
+/*
+ * Destroys the overlay window and resets the global handle.
+ * Safe to call even if no overlay exists.
+ */
+static void DestroyOverlay(void)
+{
+    if (g_hwndOverlay != NULL) {
+        DestroyWindow(g_hwndOverlay);
+        g_hwndOverlay = NULL;
+    }
+}
+
+/*
+ * Destroys the overlay and schedules its recreation after a 500ms delay.
+ *
+ * The delay is necessary because DWM needs time to process the removal
+ * of the old overlay window internally. If we create the new overlay
+ * immediately after destroying the old one, DWM may not have finished
+ * updating its internal composition state, leading to z-order issues
+ * where the new overlay ends up below the target application.
+ *
+ * Instead of blocking with Sleep(500) (which would freeze the entire
+ * message loop and make the program unresponsive for half a second),
+ * we use a one-shot timer:
+ *   1. Destroy the overlay now
+ *   2. Set a 500ms timer (TIMER_RECREATE_OVERLAY)
+ *   3. Return to the message loop (program stays responsive)
+ *   4. When the timer fires, CreateOverlay() is called from WndProc
+ */
+static void RecreateOverlay(void)
+{
+    DestroyOverlay();
+    SetTimer(g_hwndMain, TIMER_RECREATE_OVERLAY, INTERVAL_RECREATE, NULL);
+}
+
+/* ─── Periodic Tasks ────────────────────────────────────────────────── */
+
+/*
+ * Re-asserts the overlay's topmost position.
+ *
+ * Called every 500ms because games running under Windows Fullscreen
+ * Optimizations (FSO) operate in a special z-band that sits above
+ * normal HWND_TOPMOST windows. The periodic re-assertion ensures
+ * DWM keeps the overlay in the composition chain even when FSO
+ * tries to optimize it away.
+ */
+static void ReassertTopmost(void)
+{
+    if (g_hwndOverlay == NULL) {
+        return;
+    }
+    SetWindowPos(g_hwndOverlay, HWND_TOPMOST,
+                 0, 0, 1, 1, SWP_TOPMOST_FLAGS);
+}
+
+/*
+ * Monitors the foreground window and recreates the overlay when it changes.
+ *
+ * When a new window comes to the foreground (e.g., a game launches or
+ * regains focus), the overlay may end up below it in the z-order.
+ * Detecting this change and recreating the overlay ensures it is always
+ * positioned above the active application.
+ */
+static void CheckForeground(void)
+{
+    HWND current = GetForegroundWindow();
+    if (current != g_lastForeground) {
+        g_lastForeground = current;
+        RecreateOverlay();
+    }
+}
+
+/* ─── System Tray ───────────────────────────────────────────────────── */
+
+/*
+ * Sets up the system tray icon.
+ * Loads the icon embedded in the executable as resource ID 1
+ * (defined in ForceComposedFlip.rc). Falls back to the generic
+ * Windows application icon if the resource is not found (e.g.,
+ * if compiled without the .rc resource file).
+ */
+static void SetupTrayIcon(void)
+{
+    /* Load the icon from our own executable's embedded resources */
+    g_hIcon = LoadIconW(GetModuleHandleW(NULL), MAKEINTRESOURCEW(1));
+
+    /* Fall back to a default application icon if resource not found */
+    if (g_hIcon == NULL) {
+        g_hIcon = LoadIconW(NULL, IDI_APPLICATION);
+    }
+
+    /* Fill in the NOTIFYICONDATAW structure for Shell_NotifyIconW */
+    ZeroMemory(&g_nid, sizeof(g_nid));
+    g_nid.cbSize           = sizeof(g_nid);
+    g_nid.hWnd             = g_hwndMain;
+    g_nid.uID              = 1;
+    g_nid.uFlags           = NIF_ICON | NIF_MESSAGE | NIF_TIP;
+    g_nid.uCallbackMessage = WM_TRAYICON;
+    g_nid.hIcon            = g_hIcon;
+    lstrcpyW(g_nid.szTip, L"ForceComposedFlip - Waiting for game...");
+
+    Shell_NotifyIconW(NIM_ADD, &g_nid);
+}
+
+/*
+ * Removes the system tray icon and frees the icon resource.
+ */
+static void RemoveTrayIcon(void)
+{
+    Shell_NotifyIconW(NIM_DELETE, &g_nid);
+    if (g_hIcon) {
+        DestroyIcon(g_hIcon);
+        g_hIcon = NULL;
+    }
+}
+
+/*
+ * Updates the tray tooltip text.
+ * If text is NULL, generates the default "Active" tooltip with the
+ * current local time in HH:mm:ss format.
+ */
+static void UpdateTooltip(const WCHAR *text)
+{
+    if (text) {
+        lstrcpynW(g_nid.szTip, text,
+                  sizeof(g_nid.szTip) / sizeof(WCHAR));
+    } else {
+        /* Build "ForceComposedFlip - Active (HH:mm:ss)" */
+        SYSTEMTIME st;
+        GetLocalTime(&st);
+        wsprintfW(g_nid.szTip,
+                  L"ForceComposedFlip - Active (%02d:%02d:%02d)",
+                  st.wHour, st.wMinute, st.wSecond);
+    }
+    g_nid.uFlags = NIF_TIP;
+    Shell_NotifyIconW(NIM_MODIFY, &g_nid);
+}
+
+/*
+ * Shows the tray context menu at the current cursor position.
+ *
+ * The menu mirrors the AHK version exactly:
+ *   "ForceComposedFlip - Active"       (disabled header label)
+ *   ─────────────────────────────
+ *   "Recreate overlay now"
+ *   ─────────────────────────────
+ *   "Disable MPO (add registry key)"
+ *   "Enable MPO (remove registry key)"
+ *   ─────────────────────────────
+ *   "Exit"
+ */
+static void ShowContextMenu(void)
+{
+    HMENU hMenu = CreatePopupMenu();
+    if (!hMenu) return;
+
+    /* Header label — grayed out, not clickable */
+    AppendMenuW(hMenu, MF_STRING | MF_GRAYED, 0,
+                L"ForceComposedFlip - Active");
+    AppendMenuW(hMenu, MF_SEPARATOR, 0, NULL);
+
+    AppendMenuW(hMenu, MF_STRING, IDM_RECREATE,
+                L"Recreate overlay now");
+    AppendMenuW(hMenu, MF_SEPARATOR, 0, NULL);
+
+    AppendMenuW(hMenu, MF_STRING, IDM_DISABLE_MPO,
+                L"Disable MPO (add registry key)");
+    AppendMenuW(hMenu, MF_STRING, IDM_ENABLE_MPO,
+                L"Enable MPO (remove registry key)");
+    AppendMenuW(hMenu, MF_SEPARATOR, 0, NULL);
+
+    AppendMenuW(hMenu, MF_STRING, IDM_EXIT, L"Exit");
+
+    /*
+     * SetForegroundWindow is required before TrackPopupMenu, otherwise
+     * the menu won't dismiss when the user clicks outside of it.
+     * This is a documented Win32 quirk (Microsoft KB135788).
+     */
+    POINT pt;
+    GetCursorPos(&pt);
+    SetForegroundWindow(g_hwndMain);
+    TrackPopupMenu(hMenu, TPM_RIGHTBUTTON, pt.x, pt.y, 0, g_hwndMain, NULL);
+
+    /*
+     * Post a dummy message after TrackPopupMenu to force the message loop
+     * to cycle, ensuring proper menu dismissal (another documented Win32
+     * tray icon quirk).
+     */
+    PostMessage(g_hwndMain, WM_NULL, 0, 0);
+
+    DestroyMenu(hMenu);
+}
+
+/* ─── UAC Elevation ─────────────────────────────────────────────────── */
+
+/*
+ * Runs cmd.exe with the given parameters elevated via UAC.
+ *
+ * Uses ShellExecuteExW with the "runas" verb to trigger the UAC
+ * elevation prompt. The console window is hidden (SW_HIDE) since
+ * the user doesn't need to see it.
+ *
+ * Waits up to 5 seconds for the elevated process to complete before
+ * returning, so the caller knows the operation has finished.
+ *
+ * Returns TRUE if the command was executed successfully.
+ * Returns FALSE if the user cancelled UAC or the execution failed.
+ */
+static BOOL RunElevated(const WCHAR *params)
+{
+    SHELLEXECUTEINFOW sei;
+    ZeroMemory(&sei, sizeof(sei));
+    sei.cbSize       = sizeof(sei);
+    sei.fMask        = SEE_MASK_NOCLOSEPROCESS; /* We need the process handle */
+    sei.lpVerb       = L"runas";                /* Triggers UAC elevation     */
+    sei.lpFile       = L"cmd.exe";
+    sei.lpParameters = params;
+    sei.nShow        = SW_HIDE;                 /* Hide the console window    */
+
+    if (!ShellExecuteExW(&sei)) {
+        return FALSE; /* User cancelled UAC or execution failed */
+    }
+
+    /* Wait for the elevated process to finish (5 second timeout) */
+    if (sei.hProcess) {
+        WaitForSingleObject(sei.hProcess, 5000);
+        CloseHandle(sei.hProcess);
+    }
+
+    return TRUE;
+}
+
+/* ─── MPO Toggle ────────────────────────────────────────────────────── */
+
+/*
+ * Adds or removes the MPO (Multiplane Overlay) disable registry key.
+ *
+ * MPO allows DWM to use hardware overlay planes to bypass full
+ * composition. Even with our topmost overlay window, MPO can let
+ * frames skip the composition chain. Disabling MPO via this registry
+ * key forces DWM to composite all frames through the normal pipeline.
+ *
+ * The registry key is:
+ *   HKLM\SOFTWARE\Microsoft\Windows\Dwm\OverlayTestMode = 5 (DWORD)
+ *
+ * After the registry change, the user is prompted to restart DWM
+ * immediately (via "taskkill /f /im dwm.exe" — Windows automatically
+ * restarts DWM after it's killed) or reboot later.
+ *
+ * Parameters:
+ *   disable: TRUE  = add the key (disable MPO)
+ *            FALSE = remove the key (enable MPO / restore default)
+ */
+static void SetMPO(BOOL disable)
+{
+    const WCHAR *regCmd;
+    const WCHAR *successMsg;
+
+    if (disable) {
+        regCmd = L"/c reg add \"HKLM\\SOFTWARE\\Microsoft\\Windows\\Dwm\" "
+                 L"/v OverlayTestMode /t REG_DWORD /d 5 /f";
+        successMsg =
+            L"MPO disabled (registry key added).\n\n"
+            L"Restart DWM now to apply immediately?\n"
+            L"(Screen will flash briefly. If it doesn't work, "
+            L"do a full reboot.)";
+    } else {
+        regCmd = L"/c reg delete \"HKLM\\SOFTWARE\\Microsoft\\Windows\\Dwm\" "
+                 L"/v OverlayTestMode /f";
+        successMsg =
+            L"MPO enabled (registry key removed).\n\n"
+            L"Restart DWM now to apply immediately?\n"
+            L"(Screen will flash briefly. If it doesn't work, "
+            L"do a full reboot.)";
+    }
+
+    if (RunElevated(regCmd)) {
+        int answer = MessageBoxW(NULL, successMsg, L"ForceComposedFlip",
+                                 MB_YESNO | MB_ICONWARNING);
+        if (answer == IDYES) {
+            if (!RunElevated(L"/c taskkill /f /im dwm.exe")) {
+                MessageBoxW(NULL,
+                    L"Could not restart DWM. "
+                    L"Please reboot your PC to apply changes.",
+                    L"ForceComposedFlip",
+                    MB_OK | MB_ICONWARNING);
+            }
+        }
+    } else {
+        MessageBoxW(NULL,
+            L"Operation cancelled or failed.",
+            L"ForceComposedFlip",
+            MB_OK | MB_ICONWARNING);
+    }
+}
+
+/* ─── Clean Exit ────────────────────────────────────────────────────── */
+
+/*
+ * Performs a clean shutdown:
+ *   1. Kills all active timers (recurring and potential one-shot)
+ *   2. Destroys the overlay window
+ *   3. Removes the system tray icon
+ *   4. Destroys the main window, which triggers WM_DESTROY →
+ *      PostQuitMessage → message loop exits → program terminates
+ */
+static void CleanExit(void)
+{
+    KillTimer(g_hwndMain, TIMER_REASSERT_TOPMOST);
+    KillTimer(g_hwndMain, TIMER_CHECK_FOREGROUND);
+    KillTimer(g_hwndMain, TIMER_RECREATE_OVERLAY);
+    DestroyOverlay();
+    RemoveTrayIcon();
+    DestroyWindow(g_hwndMain);
+}
