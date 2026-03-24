@@ -152,8 +152,8 @@ Given the zero computational cost of this approach (a 1x1 pixel window + a SetWi
 
 Download the latest release from the [Releases](../../releases) page:
 
-- **`ForceComposedFlip.exe`** — Pre-compiled, ready to run. No dependencies needed.
-- **`ForceComposedFlip.ahk`** — Source code. Requires [AutoHotkey v2](https://www.autohotkey.com/) if you want to run or modify it directly.
+- **`ForceComposedFlip.exe`** — Native Win32 C build (recommended). Standalone, no runtime dependencies.
+- **`ForceComposedFlip-autohotkey.exe`** — Compiled from the AutoHotkey v2 source. May be blocked by anti-cheat software (e.g., EA AntiCheat).
 
 ## Building from Source
 
@@ -170,4 +170,4 @@ This produces `ForceComposedFlip.exe`, a standalone Windows executable with the 
 
 This project is licensed under the [GNU General Public License v3 or later (GPLv3+)](https://choosealicense.com/licenses/gpl-3.0/).
 
-The application icon is ["libre-device-controller"](https://github.com/DennisSuitters/LibreICONS/blob/master/svg-color/libre-device-controller.svg) from [LibreICONS](https://github.com/DennisSuitters/LibreICONS) by [Dennis Suitters](https://github.com/DennisSuitters), licensed under [MIT](https://opensource.org/licenses/MIT).
+The application icon is ["libre-device-controller"](https://github.com/DennisSuitters/LibreICONS/blob/master/svg-color/libre-device-controller.svg) from [LibreICONS](https://github.com/DennisSuitters/LibreICONS) by [Dennis Suitters](https://github.com/DennisSuitters), licensed under [MIT](https://choosealicense.com/licenses/mit/).
