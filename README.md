@@ -158,4 +158,4 @@ Download the latest release from the [Releases](../../releases) page:
 
 This project is licensed under the [GNU General Public License v3 or later (GPLv3+)](https://choosealicense.com/licenses/gpl-3.0/).
 
-The application icon is based on ["Pymes hardware chip"](https://icon-icons.com/es/icono/pymes-hardware-chip/53525) from the "Electronic Devices vol 1" pack by [Chameleon Design](https://icon-icons.com/es/pack/Electronic-Devices-vol-1/1836), licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). The original icon color was changed from black to green.
+The application icon is ["libre-device-controller"](https://github.com/DennisSuitters/LibreICONS/blob/master/svg-color/libre-device-controller.svg) from [LibreICONS](https://github.com/DennisSuitters/LibreICONS) by [Dennis Suitters](https://github.com/DennisSuitters), licensed under [MIT](https://opensource.org/licenses/MIT).

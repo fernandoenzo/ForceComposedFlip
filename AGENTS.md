@@ -17,7 +17,7 @@ Two mechanisms work together:
 ForceComposedFlip.ahk     # Original AutoHotkey v2 implementation (188 lines)
 ForceComposedFlip.c       # Native Win32 C implementation (~640 lines)
 ForceComposedFlip.rc      # Windows resource script (embeds the .ico into the .exe)
-ForceComposedFlip.ico     # Application icon (chip/hardware icon, green)
+ForceComposedFlip.ico     # Application icon (gamepad icon from LibreICONS)
 Makefile                  # Cross-compilation with MinGW-w64 from Linux
 README.md                 # Full documentation
 LICENSE                   # GPLv3
@@ -70,4 +70,4 @@ This produces `ForceComposedFlip.exe`, a standalone Windows executable with the 
 
 ## License
 
-GPLv3+. The application icon is CC BY 4.0 by Chameleon Design (color changed from black to green). See README.md for full attribution.
+GPLv3+. The application icon is MIT-licensed by Dennis Suitters (LibreICONS). See README.md for full attribution.
