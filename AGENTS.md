@@ -60,6 +60,7 @@ This produces `ForceComposedFlip.exe`, a standalone Windows executable with the 
 - The C code uses the Win32 Unicode API exclusively (all `W`-suffixed functions, `wchar_t` strings with `L"..."` prefix). The `-municode` compiler flag handles the `UNICODE` / `_UNICODE` defines.
 - The project is intentionally single-file (one `.c` file). Do not split it into multiple source files.
 - Comments should explain **why**, not just **what**. Every function has a block comment describing its purpose and any non-obvious behavior.
+- All git commits must be **signed** (`git commit -S`).
 
 ## Important Technical Details
 

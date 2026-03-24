@@ -22,6 +22,7 @@ This solves the long-standing issue where only "real" rendered frames are captur
 - [A Note for Sunshine Developers](#a-note-for-sunshine-developers)
 - [Tested Configuration](#tested-configuration)
 - [Download](#download)
+- [Building from Source](#building-from-source)
 - [License](#license)
 
 ## The Problem
@@ -142,7 +143,7 @@ Given the zero computational cost of this approach (a 1x1 pixel window + a SetWi
 
 - **GPU:** NVIDIA RTX 5080
 - **OS:** Windows 11 24H2
-- **Sunshine:** Latest portable build with WGC capture
+- **Sunshine:** v2026.323.224448 (portable) with WGC capture
 - **Client:** Moonlight
 - **Games tested:** Final Fantasy XVI (Xbox/MS Store), Final Fantasy VII Rebirth (Steam), Spider-Man Remastered (Steam)
 - **FG modes tested:** DLSS Frame Generation (1x), Multi Frame Generation (up to 4x)
@@ -153,6 +154,17 @@ Download the latest release from the [Releases](../../releases) page:
 
 - **`ForceComposedFlip.exe`** — Pre-compiled, ready to run. No dependencies needed.
 - **`ForceComposedFlip.ahk`** — Source code. Requires [AutoHotkey v2](https://www.autohotkey.com/) if you want to run or modify it directly.
+
+## Building from Source
+
+To cross-compile from Linux (Debian/Ubuntu):
+
+```bash
+sudo apt install build-essential mingw-w64
+make clean && make
+```
+
+This produces `ForceComposedFlip.exe`, a standalone Windows executable with the application icon embedded as a resource.
 
 ## License
 
