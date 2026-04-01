@@ -1,3 +1,6 @@
 *.exe
 *.o
 *.res
+
+# opencode AI plans and temporary files
+.opencode/

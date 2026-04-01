@@ -152,8 +152,7 @@ Given the zero computational cost of this approach (a 1x1 pixel window + a SetWi
 
 Download the latest release from the [Releases](../../releases) page:
 
-- **`ForceComposedFlip.exe`** — Native Win32 C build (recommended). Standalone, no runtime dependencies.
-- **`ForceComposedFlip-autohotkey.exe`** — Compiled from the AutoHotkey v2 source. May be blocked by anti-cheat software (e.g., EA AntiCheat).
+- **`ForceComposedFlip.exe`** — Standalone Windows executable, no runtime dependencies.
 
 ## Building from Source
 

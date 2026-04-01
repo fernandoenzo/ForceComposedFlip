@@ -14,8 +14,7 @@ Two mechanisms work together:
 ## File Structure
 
 ```
-ForceComposedFlip.ahk     # Original AutoHotkey v2 implementation (188 lines)
-ForceComposedFlip.c       # Native Win32 C implementation (~640 lines)
+ForceComposedFlip.c       # Native Win32 C implementation (single-file)
 ForceComposedFlip.rc      # Windows resource script (embeds the .ico into the .exe)
 ForceComposedFlip.ico     # Application icon (gamepad icon from LibreICONS)
 Makefile                  # Cross-compilation with MinGW-w64 from Linux
@@ -24,8 +23,6 @@ LICENSE                   # GPLv3
 AGENTS.md                 # AI agent coding guidelines
 .gitignore                # Ignores build artifacts (*.exe, *.o, *.res)
 ```
-
-Both the `.ahk` and `.c` implementations are functionally equivalent and maintained in parallel.
 
 ## Building
 
@@ -87,9 +84,9 @@ The user has final say on every action via double confirmation.
 ## Important Technical Details
 
 - The overlay opacity must be exactly 1 (not 0). Fully transparent windows are optimized out by DWM and will not force Composed Flip.
-- The `Sleep(500)` delay between overlay destroy and recreate (present in the AHK version) is implemented as a one-shot timer in the C version to avoid blocking the message loop.
+- The delay between overlay destroy and recreate is implemented as a 500ms one-shot timer to avoid blocking the message loop.
 - The `ReassertTopmost` timer (500ms) is critical — FSO games sit on a higher z-band than normal topmost windows, so periodic re-assertion is required.
-- The `ExtractIconW` index is 0-based, while AHK's `TraySetIcon` index is 1-based. Keep this in mind if referencing icon indices from the AHK version.
+
 
 ## License
 
