@@ -21,6 +21,7 @@ ForceComposedFlip.ico     # Application icon (gamepad icon from LibreICONS)
 Makefile                  # Cross-compilation with MinGW-w64 from Linux
 README.md                 # Full documentation
 LICENSE                   # GPLv3
+AGENTS.md                 # AI agent coding guidelines
 .gitignore                # Ignores build artifacts (*.exe, *.o, *.res)
 ```
 
@@ -59,8 +60,29 @@ This produces `ForceComposedFlip.exe`, a standalone Windows executable with the 
 - All code comments and documentation must be written in **English**.
 - The C code uses the Win32 Unicode API exclusively (all `W`-suffixed functions, `wchar_t` strings with `L"..."` prefix). The `-municode` compiler flag handles the `UNICODE` / `_UNICODE` defines.
 - The project is intentionally single-file (one `.c` file). Do not split it into multiple source files.
+- Comments use `/* C-style */` only (no `//`). Every function has a block comment describing its purpose and any non-obvious behavior.
 - Comments should explain **why**, not just **what**. Every function has a block comment describing its purpose and any non-obvious behavior.
+- Section headers use Unicode box-drawing characters: `/* ─── Section Name ──── */`
+- Constants: `UPPER_SNAKE_CASE` via `#define`, grouped by category with prefixes (`TIMER_`, `IDM_`).
+- Globals: `static g_camelCase`, all initialized to `NULL`/`0`/`FALSE`.
+- Functions: `static PascalCase(void)`, all internal linkage.
+- Local variables: `camelCase`.
+- K&R brace style, 4-space indentation.
+- No heap allocation — all stack locals and static globals.
 - All git commits must be **signed** (`git commit -S`).
+- Git tags must be **lightweight** (`git tag 1.2`), not annotated or signed.
+- When elaborating plans with the user, ALWAYS save them to a temporary text file (e.g., `.opencode/plans/plan.md`) to ensure they survive conversation compressions. Iterate on this file throughout the conversation as the plan evolves. The AI agent has full permission to create, modify, and delete this file even in plan-only mode — this is the only exception to the read-only constraint. This file should never be tracked in the repository. After executing the plan, ALWAYS ask the user for permission to delete the file.
+
+## Execution Protocol
+
+**NEVER execute changes without explicit double confirmation:**
+
+1. Always plan first, present to user, wait for approval
+2. Ask if the user wants to execute the plan
+3. If user confirms, ask once more for final confirmation before proceeding
+4. **This applies even in Build Mode** — no exceptions
+
+The user has final say on every action via double confirmation.
 
 ## Important Technical Details
 
