@@ -54,6 +54,7 @@ The version string is derived from `git describe --tags --dirty` in the Makefile
 - `ShellExecuteExW` with `"runas"` verb — UAC elevation for registry changes
 - `WaitForSingleObject` / `CloseHandle` — waits for elevated processes
 - `CreateMutexW` — enforces single instance
+- `RegOpenKeyExW` / `RegQueryValueExW` — reads MPO registry state
 
 ## Conventions
 

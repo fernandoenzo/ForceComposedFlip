@@ -96,8 +96,7 @@ Both Borderless Windowed and Fullscreen (FSO) work identically with this solutio
 
 Right-click the gamepad icon in the system tray:
 
-- **Disable MPO (add registry key)** — Adds the MPO disable registry key. Prompts for admin permission. Asks if you want to restart DWM immediately to apply without rebooting.
-- **Enable MPO (remove registry key)** — Removes the registry key. Same admin and DWM restart prompts.
+- **MPO disabled** (checkmark toggle) — Shows a checkmark (✓) when the MPO disable registry key is present. Clicking toggles the state: adds or removes the key, prompts for admin permission, and asks if you want to restart DWM immediately to apply without rebooting.
 - **Exit** — Closes the program and removes the overlay window.
 
 ## Performance Impact

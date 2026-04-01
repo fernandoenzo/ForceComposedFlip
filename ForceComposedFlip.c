@@ -36,9 +36,8 @@
 #define WM_TRAYICON             (WM_APP + 1)
 
 /* Menu item IDs for the tray context menu */
-#define IDM_DISABLE_MPO         1001
-#define IDM_ENABLE_MPO          1002
-#define IDM_EXIT                1003
+#define IDM_TOGGLE_MPO          1001
+#define IDM_EXIT                1002
 
 /* Mutex name to enforce single instance */
 #define MUTEX_NAME              L"ForceComposedFlip_SingleInstance"
@@ -71,6 +70,7 @@ static void SetupTrayIcon(void);
 static void RemoveTrayIcon(void);
 static void ShowContextMenu(void);
 static void UpdateTooltip(const WCHAR *text);
+static BOOL IsMpoDisabled(void);
 static BOOL RunElevated(const WCHAR *params);
 static void SetMPO(BOOL disable);
 static void CleanExit(void);
@@ -222,11 +222,8 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam,
     case WM_COMMAND:
         /* Handle context menu item selections */
         switch (LOWORD(wParam)) {
-        case IDM_DISABLE_MPO:
-            SetMPO(TRUE);
-            break;
-        case IDM_ENABLE_MPO:
-            SetMPO(FALSE);
+        case IDM_TOGGLE_MPO:
+            SetMPO(!IsMpoDisabled());
             break;
         case IDM_EXIT:
             CleanExit();
@@ -466,8 +463,7 @@ static void UpdateTooltip(const WCHAR *text)
  * Menu layout:
  *   "ForceComposedFlip <version>"       (disabled header label)
  *   ─────────────────────────────
- *   "Disable MPO (add registry key)"
- *   "Enable MPO (remove registry key)"
+ *   "✓ MPO disabled"                   (checkmark toggle)
  *   ─────────────────────────────
  *   "Exit"
  */
@@ -481,10 +477,11 @@ static void ShowContextMenu(void)
                 L"ForceComposedFlip " VERSION_STRING);
     AppendMenuW(hMenu, MF_SEPARATOR, 0, NULL);
 
-    AppendMenuW(hMenu, MF_STRING, IDM_DISABLE_MPO,
-                L"Disable MPO (add registry key)");
-    AppendMenuW(hMenu, MF_STRING, IDM_ENABLE_MPO,
-                L"Enable MPO (remove registry key)");
+    /* MPO toggle — checkmark reflects current registry state */
+    BOOL mpoDisabled = IsMpoDisabled();
+    AppendMenuW(hMenu,
+                MF_STRING | (mpoDisabled ? MF_CHECKED : MF_UNCHECKED),
+                IDM_TOGGLE_MPO, L"MPO disabled");
     AppendMenuW(hMenu, MF_SEPARATOR, 0, NULL);
 
     AppendMenuW(hMenu, MF_STRING, IDM_EXIT, L"Exit");
@@ -549,6 +546,33 @@ static BOOL RunElevated(const WCHAR *params)
 }
 
 /* ─── MPO Toggle ────────────────────────────────────────────────────── */
+
+/*
+ * Checks whether MPO (Multiplane Overlay) is currently disabled by
+ * querying HKLM\SOFTWARE\Microsoft\Windows\Dwm\OverlayTestMode.
+ * Returns TRUE if the value exists and equals 5.
+ *
+ * This read does not require elevation — standard users can read
+ * HKLM keys. Only writing requires the UAC-elevated cmd.exe path
+ * used by SetMPO().
+ */
+static BOOL IsMpoDisabled(void)
+{
+    HKEY hKey;
+    if (RegOpenKeyExW(HKEY_LOCAL_MACHINE,
+                      L"SOFTWARE\\Microsoft\\Windows\\Dwm",
+                      0, KEY_READ, &hKey) != ERROR_SUCCESS)
+        return FALSE;
+
+    DWORD value = 0;
+    DWORD valueSize = sizeof(value);
+    DWORD valueType = 0;
+    LONG ret = RegQueryValueExW(hKey, L"OverlayTestMode", NULL,
+                                &valueType, (LPBYTE)&value, &valueSize);
+    RegCloseKey(hKey);
+
+    return (ret == ERROR_SUCCESS && valueType == REG_DWORD && value == 5);
+}
 
 /*
  * Adds or removes the MPO (Multiplane Overlay) disable registry key.
