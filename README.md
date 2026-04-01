@@ -49,9 +49,7 @@ The fix has two components that **must both be applied**:
 
 MPO allows the DWM to use hardware overlay planes to avoid full composition. Disabling it forces all composition through software, ensuring FG frames pass through the compositor.
 
-The easiest way is from the **ForceComposedFlip tray menu**: right-click the gamepad icon → "Disable MPO". The program will ask for admin elevation, apply the registry change, and then offer to restart DWM immediately so the change takes effect without a full reboot.
-
-To revert, use "Enable MPO" from the same tray menu. It will remove the registry key and offer to restart DWM in the same way.
+The easiest way is from the **ForceComposedFlip tray menu**: right-click the gamepad icon → "MPO disabled" (shows a checkmark ✓ when active). Clicking toggles the state, prompts for admin elevation, and offers to restart DWM immediately.
 
 If you prefer to do it manually:
 
@@ -77,7 +75,7 @@ The window is re-asserted as topmost every 500ms via the Win32 `SetWindowPos` AP
 
 1. Download `ForceComposedFlip.exe` from [Releases](../../releases).
 2. Run it. A gamepad icon will appear in the system tray. That's it — leave it running.
-3. Right-click the tray icon → "Disable MPO" if you haven't already. Accept the admin permission prompt and confirm the DWM restart when asked (one-time setup, persists across reboots).
+3. Right-click the tray icon → click "MPO disabled" to add the checkmark. Accept the admin prompt and confirm the DWM restart (one-time setup, persists across reboots).
 4. Launch your game in **Borderless Windowed** or **Fullscreen** mode.
 5. All Frame Generation frames will now be captured by Sunshine.
 
@@ -157,12 +155,6 @@ Given the zero computational cost of this approach (a 1x1 pixel window + a SetWi
 - **Client:** Moonlight
 - **Games tested:** Final Fantasy XVI (Xbox/MS Store), Final Fantasy VII Rebirth (Steam), Spider-Man Remastered (Steam)
 - **FG modes tested:** DLSS Frame Generation (1x), Multi Frame Generation (up to 4x)
-
-## Download
-
-Download the latest release from the [Releases](../../releases) page:
-
-- **`ForceComposedFlip.exe`** — Standalone Windows executable, no runtime dependencies.
 
 ## Building from Source
 

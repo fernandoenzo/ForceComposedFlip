@@ -64,7 +64,7 @@ The version string is derived from `git describe --tags --dirty` in the Makefile
 - All code comments and documentation must be written in **English**.
 - The C code uses the Win32 Unicode API exclusively (all `W`-suffixed functions, `wchar_t` strings with `L"..."` prefix). The `-municode` compiler flag handles the `UNICODE` / `_UNICODE` defines.
 - The project is intentionally single-file (one `.c` file). Do not split it into multiple source files.
-- Comments use `/* C-style */` only (no `//`). Every function has a block comment describing its purpose and any non-obvious behavior.
+- Comments use `/* C-style */` only (no `//`).
 - Comments should explain **why**, not just **what**. Every function has a block comment describing its purpose and any non-obvious behavior.
 - Section headers use Unicode box-drawing characters: `/* ─── Section Name ──── */`
 - Constants: `UPPER_SNAKE_CASE` via `#define`, grouped by category with prefixes (`TIMER_`, `IDM_`).
