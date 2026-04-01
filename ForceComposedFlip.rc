@@ -1,2 +1,3 @@
-/* ForceComposedFlip resource script — embeds the application icon */
+/* ForceComposedFlip resource script — embeds icon and DPI manifest */
 1 ICON "ForceComposedFlip.ico"
+1 24 "ForceComposedFlip.manifest"

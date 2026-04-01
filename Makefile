@@ -10,7 +10,7 @@ RES_OBJ = ForceComposedFlip_res.o
 $(TARGET): $(SRC) $(RES_OBJ)
 	$(CC) $(CFLAGS) -o $@ $< $(RES_OBJ) $(LDFLAGS)
 
-$(RES_OBJ): $(RC) ForceComposedFlip.ico
+$(RES_OBJ): $(RC) ForceComposedFlip.ico ForceComposedFlip.manifest
 	$(WINDRES) $(RC) -o $@
 
 clean:

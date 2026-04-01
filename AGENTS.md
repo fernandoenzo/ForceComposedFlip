@@ -15,7 +15,8 @@ Two mechanisms work together:
 
 ```
 ForceComposedFlip.c       # Native Win32 C implementation (single-file)
-ForceComposedFlip.rc      # Windows resource script (embeds the .ico into the .exe)
+ForceComposedFlip.rc      # Windows resource script (embeds icon and manifest)
+ForceComposedFlip.manifest # DPI awareness manifest (PerMonitorV2)
 ForceComposedFlip.ico     # Application icon (gamepad icon from LibreICONS)
 Makefile                  # Cross-compilation with MinGW-w64 from Linux
 README.md                 # Full documentation
