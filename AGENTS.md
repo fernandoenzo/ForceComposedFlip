@@ -50,7 +50,7 @@ The version string is derived from `git describe --tags --dirty` in the Makefile
 - `SetLayeredWindowAttributes` — sets opacity to 1/255
 - `SetWindowPos` with `HWND_TOPMOST` — re-asserts z-order every 500ms
 - `GetForegroundWindow` — polls foreground window every 2000ms
-- `Shell_NotifyIconW` — system tray icon and tooltip
+- `Shell_NotifyIconW` — system tray icon, tooltip, and balloon notifications
 - `ShellExecuteExW` with `"runas"` verb — UAC elevation for registry changes
 - `WaitForSingleObject` / `CloseHandle` — waits for elevated processes
 - `CreateMutexW` — enforces single instance

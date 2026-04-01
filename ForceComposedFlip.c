@@ -26,11 +26,13 @@
 #define TIMER_REASSERT_TOPMOST  1   /* Re-assert overlay z-order every 500ms */
 #define TIMER_CHECK_FOREGROUND  2   /* Poll foreground window every 2000ms   */
 #define TIMER_RECREATE_OVERLAY  3   /* One-shot 500ms delay for recreation   */
+#define TIMER_CLOSE_BALLOON    4   /* One-shot 3500ms auto-close for balloon */
 
 /* Timer intervals in milliseconds */
 #define INTERVAL_REASSERT       500
 #define INTERVAL_FOREGROUND     2000
 #define INTERVAL_RECREATE       500
+#define INTERVAL_BALLOON        3500
 
 /* Custom window message for system tray icon events */
 #define WM_TRAYICON             (WM_APP + 1)
@@ -75,6 +77,7 @@ static void SetupTrayIcon(void);
 static void RemoveTrayIcon(void);
 static void ShowContextMenu(void);
 static void UpdateTooltip(const WCHAR *text);
+static void ShowBalloon(const WCHAR *title, const WCHAR *text);
 static BOOL IsMpoDisabled(void);
 static BOOL RunElevated(const WCHAR *params);
 static void SetMPO(BOOL disable);
@@ -211,6 +214,13 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam,
             KillTimer(hwnd, TIMER_RECREATE_OVERLAY);
             CreateOverlay();
             UpdateTooltip(NULL); /* Update tooltip with current timestamp */
+            break;
+        case TIMER_CLOSE_BALLOON:
+            /* One-shot timer: dismiss the balloon notification after 3500ms */
+            KillTimer(hwnd, TIMER_CLOSE_BALLOON);
+            g_nid.uFlags = NIF_INFO;
+            g_nid.szInfo[0] = L'\0';
+            Shell_NotifyIconW(NIM_MODIFY, &g_nid);
             break;
         }
         return 0;
@@ -468,6 +478,34 @@ static void UpdateTooltip(const WCHAR *text)
 }
 
 /*
+ * Shows a balloon (toast) notification from the system tray icon.
+ *
+ * Cancels any pending balloon first, then displays the new one with the
+ * application icon. A one-shot timer auto-dismisses it after 3.5 seconds
+ * to keep the notification unobtrusive.
+ */
+static void ShowBalloon(const WCHAR *title, const WCHAR *text)
+{
+    /* Cancel any pending balloon and its timer */
+    g_nid.uFlags = NIF_INFO;
+    g_nid.szInfo[0] = L'\0';
+    Shell_NotifyIconW(NIM_MODIFY, &g_nid);
+    KillTimer(g_hwndMain, TIMER_CLOSE_BALLOON);
+
+    /* Show the new balloon with the application icon */
+    g_nid.dwInfoFlags  = NIIF_USER | NIIF_LARGE_ICON;
+    g_nid.hBalloonIcon = g_hIcon;
+    lstrcpynW(g_nid.szInfoTitle, title,
+              sizeof(g_nid.szInfoTitle) / sizeof(WCHAR));
+    lstrcpynW(g_nid.szInfo, text,
+              sizeof(g_nid.szInfo) / sizeof(WCHAR));
+    Shell_NotifyIconW(NIM_MODIFY, &g_nid);
+
+    /* Schedule auto-dismiss after 3.5 seconds */
+    SetTimer(g_hwndMain, TIMER_CLOSE_BALLOON, INTERVAL_BALLOON, NULL);
+}
+
+/*
  * Shows the tray context menu at the current cursor position.
  *
  * Menu layout:
@@ -706,7 +744,8 @@ static void SetAutoStart(BOOL enable)
 
 /*
  * Performs a clean shutdown:
- *   1. Kills all active timers (recurring and potential one-shot)
+ *   1. Kills all active timers (recurring and potential one-shot,
+ *      including the balloon auto-dismiss timer)
  *   2. Destroys the overlay window
  *   3. Removes the system tray icon
  *   4. Destroys the main window, which triggers WM_DESTROY →
@@ -717,6 +756,7 @@ static void CleanExit(void)
     KillTimer(g_hwndMain, TIMER_REASSERT_TOPMOST);
     KillTimer(g_hwndMain, TIMER_CHECK_FOREGROUND);
     KillTimer(g_hwndMain, TIMER_RECREATE_OVERLAY);
+    KillTimer(g_hwndMain, TIMER_CLOSE_BALLOON);
     DestroyOverlay();
     RemoveTrayIcon();
     DestroyWindow(g_hwndMain);
