@@ -49,7 +49,7 @@ The fix has two components that **must both be applied**:
 
 MPO allows the DWM to use hardware overlay planes to avoid full composition. Disabling it forces all composition through software, ensuring FG frames pass through the compositor.
 
-The easiest way is from the **ForceComposedFlip tray menu**: right-click the gamepad icon → "MPO disabled" (shows a checkmark ✓ when active). Clicking toggles the state, prompts for admin elevation, and offers to restart DWM immediately.
+The easiest way is from the **ForceComposedFlip tray menu**: right-click the gamepad icon → click "Frame capture disabled" to enable it. You'll be prompted for admin elevation and offered to restart DWM immediately.
 
 If you prefer to do it manually:
 
@@ -75,7 +75,7 @@ The window is re-asserted as topmost every 500ms via the Win32 `SetWindowPos` AP
 
 1. Download `ForceComposedFlip.exe` from [Releases](../../releases).
 2. Run it. A gamepad icon will appear in the system tray. That's it — leave it running.
-3. Right-click the tray icon → click "MPO disabled" to add the checkmark. Accept the admin prompt and confirm the DWM restart (one-time setup, persists across reboots).
+3. Right-click the tray icon → click "Frame capture disabled" to enable it. Accept the admin prompt and confirm the DWM restart (one-time setup, persists across reboots).
 4. Launch your game in **Borderless Windowed** or **Fullscreen** mode.
 5. All Frame Generation frames will now be captured by Sunshine.
 
@@ -104,7 +104,7 @@ Both Borderless Windowed and Fullscreen (FSO) work identically with this solutio
 
 Right-click the gamepad icon in the system tray:
 
-- **MPO disabled** (checkmark toggle) — Shows a checkmark (✓) when the MPO disable registry key is present. Clicking toggles the state: adds or removes the key, prompts for admin permission, and asks if you want to restart DWM immediately to apply without rebooting.
+- **Frame capture enabled/disabled** (checkmark toggle) — Shows a checkmark (✓) and "enabled" when frame capture is working properly, or "disabled" without checkmark when MPO is active. Clicking toggles the state, prompts for admin permission, and asks if you want to restart DWM immediately to apply without rebooting.
 - **Start with Windows** (checkmark toggle) — Registers or unregisters the application in `HKCU\...\Run` so it launches automatically at logon. No admin permission required.
 - **Check for updates** — Checks GitHub for a newer release. Shows dynamic text: "Check for updates" (initial), "Check for updates (latest)" (already up to date), "Update to X available!" (new version found), or "Checking for updates..." (in progress). Clicking when an update is available opens the releases page in your browser. A silent check also runs automatically at startup and shows a balloon notification if a newer version is found.
 - **Exit** — Closes the program and removes the overlay window.
@@ -115,7 +115,7 @@ In a Sunshine/Moonlight streaming context, the performance impact of this soluti
 
 - **MPO disabled:** The only known side effect is that VRR/G-Sync may not work correctly with video streaming apps (Netflix, Disney+, etc.) on the host's physical monitor. However, in a streaming setup, the host monitor is irrelevant — it only serves as an anchor for the GPU to render. VRR/G-Sync is applied on the client device running Moonlight, not on the host display. If your host PC is dedicated to streaming, this has zero practical impact.
 - **Transparent window:** The 1x1 pixel window compositing is essentially free. The SetWindowPos call every 500ms has no measurable CPU or GPU cost.
-- **Composed Flip vs Independent Flip:** Adds < 1ms of presentation latency on the host's local display. Irrelevant for streaming — the latency that matters is the end-to-end encode/network/decode pipeline to the Moonlight client.
+- **Composed Flip vs Independent Flip:** Adds one frame of compositor latency on the host's local display. Irrelevant for streaming — the latency that matters is the end-to-end encode/network/decode pipeline to the Moonlight client.
 
 ### Comparison with Virtual Display Driver (VDD)
 

@@ -576,7 +576,7 @@ static void ShowBalloon(const WCHAR *title, const WCHAR *text)
  * Menu layout:
  *   "ForceComposedFlip <version>"       (disabled header label)
  *   ─────────────────────────────
- *   "✓ MPO disabled"                   (checkmark toggle)
+ *   "✓ Frame capture enabled/disabled" (checkmark toggle, dynamic text)
  *   ─────────────────────────────
  *   "✓ Start with Windows"             (checkmark toggle)
  *   ─────────────────────────────
@@ -593,11 +593,12 @@ static void ShowContextMenu(void)
                 L"ForceComposedFlip " VERSION_STRING);
     AppendMenuW(hMenu, MF_SEPARATOR, 0, NULL);
 
-    /* MPO toggle — checkmark reflects current registry state */
+    /* Frame capture toggle — text and checkmark reflect current registry state */
     BOOL mpoDisabled = IsMpoDisabled();
     AppendMenuW(hMenu,
                 MF_STRING | (mpoDisabled ? MF_CHECKED : MF_UNCHECKED),
-                IDM_TOGGLE_MPO, L"MPO disabled");
+                IDM_TOGGLE_MPO,
+                mpoDisabled ? L"Frame capture enabled" : L"Frame capture disabled");
     AppendMenuW(hMenu, MF_SEPARATOR, 0, NULL);
 
     /* Auto-start toggle — checkmark reflects HKCU\...\Run value */
@@ -740,7 +741,7 @@ static void SetMPO(BOOL disable)
         regCmd = L"/c reg add \"HKLM\\SOFTWARE\\Microsoft\\Windows\\Dwm\" "
                  L"/v OverlayTestMode /t REG_DWORD /d 5 /f";
         successMsg =
-            L"MPO disabled (registry key added).\n\n"
+            L"Frame capture enabled (registry key added).\n\n"
             L"Restart DWM now to apply immediately?\n"
             L"(Screen will flash briefly. If it doesn't work, "
             L"do a full reboot.)";
@@ -748,7 +749,7 @@ static void SetMPO(BOOL disable)
         regCmd = L"/c reg delete \"HKLM\\SOFTWARE\\Microsoft\\Windows\\Dwm\" "
                  L"/v OverlayTestMode /f";
         successMsg =
-            L"MPO enabled (registry key removed).\n\n"
+            L"Frame capture disabled (registry key removed).\n\n"
             L"Restart DWM now to apply immediately?\n"
             L"(Screen will flash briefly. If it doesn't work, "
             L"do a full reboot.)";
