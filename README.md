@@ -97,6 +97,7 @@ Both Borderless Windowed and Fullscreen (FSO) work identically with this solutio
 Right-click the gamepad icon in the system tray:
 
 - **MPO disabled** (checkmark toggle) — Shows a checkmark (✓) when the MPO disable registry key is present. Clicking toggles the state: adds or removes the key, prompts for admin permission, and asks if you want to restart DWM immediately to apply without rebooting.
+- **Start with Windows** (checkmark toggle) — Registers or unregisters the application in `HKCU\...\Run` so it launches automatically at logon. No admin permission required.
 - **Exit** — Closes the program and removes the overlay window.
 
 ## Performance Impact

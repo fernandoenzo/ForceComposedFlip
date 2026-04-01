@@ -37,7 +37,12 @@
 
 /* Menu item IDs for the tray context menu */
 #define IDM_TOGGLE_MPO          1001
-#define IDM_EXIT                1002
+#define IDM_AUTOSTART           1002
+#define IDM_EXIT                1003
+
+/* Registry key and value for auto-start with Windows */
+#define AUTOSTART_KEY           L"Software\\Microsoft\\Windows\\CurrentVersion\\Run"
+#define AUTOSTART_VALUE         L"ForceComposedFlip"
 
 /* Mutex name to enforce single instance */
 #define MUTEX_NAME              L"ForceComposedFlip_SingleInstance"
@@ -73,6 +78,8 @@ static void UpdateTooltip(const WCHAR *text);
 static BOOL IsMpoDisabled(void);
 static BOOL RunElevated(const WCHAR *params);
 static void SetMPO(BOOL disable);
+static BOOL IsAutoStartEnabled(void);
+static void SetAutoStart(BOOL enable);
 static void CleanExit(void);
 
 /* ─── Entry Point ───────────────────────────────────────────────────── */
@@ -224,6 +231,9 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam,
         switch (LOWORD(wParam)) {
         case IDM_TOGGLE_MPO:
             SetMPO(!IsMpoDisabled());
+            break;
+        case IDM_AUTOSTART:
+            SetAutoStart(!IsAutoStartEnabled());
             break;
         case IDM_EXIT:
             CleanExit();
@@ -464,6 +474,7 @@ static void UpdateTooltip(const WCHAR *text)
  *   "ForceComposedFlip <version>"       (disabled header label)
  *   ─────────────────────────────
  *   "✓ MPO disabled"                   (checkmark toggle)
+ *   "✓ Start with Windows"             (checkmark toggle)
  *   ─────────────────────────────
  *   "Exit"
  */
@@ -482,6 +493,11 @@ static void ShowContextMenu(void)
     AppendMenuW(hMenu,
                 MF_STRING | (mpoDisabled ? MF_CHECKED : MF_UNCHECKED),
                 IDM_TOGGLE_MPO, L"MPO disabled");
+
+    /* Auto-start toggle — checkmark reflects HKCU\...\Run value */
+    AppendMenuW(hMenu,
+                MF_STRING | (IsAutoStartEnabled() ? MF_CHECKED : MF_UNCHECKED),
+                IDM_AUTOSTART, L"Start with Windows");
     AppendMenuW(hMenu, MF_SEPARATOR, 0, NULL);
 
     AppendMenuW(hMenu, MF_STRING, IDM_EXIT, L"Exit");
@@ -634,6 +650,56 @@ static void SetMPO(BOOL disable)
             L"ForceComposedFlip",
             MB_OK | MB_ICONWARNING);
     }
+}
+
+/* ─── Auto-Start ────────────────────────────────────────────────────── */
+
+/*
+ * Checks whether ForceComposedFlip is registered to start with Windows.
+ * Reads HKCU\Software\Microsoft\Windows\CurrentVersion\Run for a value
+ * named "ForceComposedFlip". No elevation required — HKCU is per-user.
+ */
+static BOOL IsAutoStartEnabled(void)
+{
+    HKEY hKey;
+    if (RegOpenKeyExW(HKEY_CURRENT_USER, AUTOSTART_KEY,
+                      0, KEY_READ, &hKey) != ERROR_SUCCESS)
+        return FALSE;
+
+    DWORD valueType = 0;
+    DWORD valueSize = 0;
+    LONG ret = RegQueryValueExW(hKey, AUTOSTART_VALUE, NULL,
+                                &valueType, NULL, &valueSize);
+    RegCloseKey(hKey);
+
+    return (ret == ERROR_SUCCESS && valueType == REG_SZ);
+}
+
+/*
+ * Enables or disables auto-start with Windows.
+ * When enabling, writes the full path of the current executable to
+ * HKCU\...\Run so Windows launches it at logon.
+ * When disabling, deletes the registry value.
+ * No elevation required — HKCU is per-user.
+ */
+static void SetAutoStart(BOOL enable)
+{
+    HKEY hKey;
+    if (RegOpenKeyExW(HKEY_CURRENT_USER, AUTOSTART_KEY,
+                      0, KEY_WRITE, &hKey) != ERROR_SUCCESS)
+        return;
+
+    if (enable) {
+        WCHAR exePath[MAX_PATH];
+        GetModuleFileNameW(NULL, exePath, MAX_PATH);
+        RegSetValueExW(hKey, AUTOSTART_VALUE, 0, REG_SZ,
+                       (const BYTE *)exePath,
+                       (DWORD)((lstrlenW(exePath) + 1) * sizeof(WCHAR)));
+    } else {
+        RegDeleteValueW(hKey, AUTOSTART_VALUE);
+    }
+
+    RegCloseKey(hKey);
 }
 
 /* ─── Clean Exit ────────────────────────────────────────────────────── */
