@@ -98,6 +98,7 @@ Right-click the gamepad icon in the system tray:
 
 - **MPO disabled** (checkmark toggle) — Shows a checkmark (✓) when the MPO disable registry key is present. Clicking toggles the state: adds or removes the key, prompts for admin permission, and asks if you want to restart DWM immediately to apply without rebooting.
 - **Start with Windows** (checkmark toggle) — Registers or unregisters the application in `HKCU\...\Run` so it launches automatically at logon. No admin permission required.
+- **Check for updates** — Checks GitHub for a newer release. Shows dynamic text: "Check for updates" (initial), "Check for updates (latest)" (already up to date), "Update to X available!" (new version found), or "Checking for updates..." (in progress). Clicking when an update is available opens the releases page in your browser. A silent check also runs automatically at startup and shows a balloon notification if a newer version is found.
 - **Exit** — Closes the program and removes the overlay window.
 
 ## Performance Impact

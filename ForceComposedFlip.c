@@ -19,6 +19,7 @@
 
 #include <windows.h>
 #include <shellapi.h>
+#include <wininet.h>
 
 /* ─── Constants ─────────────────────────────────────────────────────── */
 
@@ -34,13 +35,15 @@
 #define INTERVAL_RECREATE       500
 #define INTERVAL_BALLOON        3500
 
-/* Custom window message for system tray icon events */
-#define WM_TRAYICON             (WM_APP + 1)
+/* Custom window messages */
+#define WM_TRAYICON             (WM_APP + 1)  /* System tray icon events  */
+#define WM_UPDATE_CHECK_DONE    (WM_APP + 2)  /* Background update result */
 
 /* Menu item IDs for the tray context menu */
 #define IDM_TOGGLE_MPO          1001
 #define IDM_AUTOSTART           1002
-#define IDM_EXIT                1003
+#define IDM_CHECK_UPDATE        1003
+#define IDM_EXIT                1004
 
 /* Registry key and value for auto-start with Windows */
 #define AUTOSTART_KEY           L"Software\\Microsoft\\Windows\\CurrentVersion\\Run"
@@ -56,13 +59,24 @@
 /* SetWindowPos flags: SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE */
 #define SWP_TOPMOST_FLAGS       (SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE)
 
+/* ─── Update State ──────────────────────────────────────────────────── */
+
+typedef enum {
+    UPDATE_UNKNOWN,    /* No check has completed yet       */
+    UPDATE_CHECKING,   /* Background thread is in progress */
+    UPDATE_AVAILABLE,  /* Newer version found on GitHub    */
+    UPDATE_LATEST      /* Running the latest version       */
+} UpdateState;
+
 /* ─── Global State ──────────────────────────────────────────────────── */
 
 static HWND g_hwndMain      = NULL;  /* Hidden message window (timers, tray)  */
 static HWND g_hwndOverlay   = NULL;  /* The invisible topmost overlay         */
 static HWND g_lastForeground = NULL; /* Last known foreground window handle   */
-static HICON g_hIcon        = NULL;  /* Tray icon handle (embedded resource)      */
+static HICON g_hIcon        = NULL;  /* Tray icon handle (embedded resource)  */
 static NOTIFYICONDATAW g_nid;        /* System tray icon data                 */
+static UpdateState g_updateState = UPDATE_UNKNOWN;
+static WCHAR g_updateVersion[32] = {0}; /* Remote version string from GitHub */
 
 /* ─── Forward Declarations ──────────────────────────────────────────── */
 
@@ -83,6 +97,7 @@ static BOOL RunElevated(const WCHAR *params);
 static void SetMPO(BOOL disable);
 static BOOL IsAutoStartEnabled(void);
 static void SetAutoStart(BOOL enable);
+static DWORD WINAPI CheckUpdateThread(LPVOID lpParam);
 static void CleanExit(void);
 
 /* ─── Entry Point ───────────────────────────────────────────────────── */
@@ -146,6 +161,9 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
     /* Set up the system tray icon with gamepad icon and tooltip */
     SetupTrayIcon();
 
+    /* Silently check for updates in the background at startup */
+    CreateThread(NULL, 0, CheckUpdateThread, (LPVOID)FALSE, 0, NULL);
+
     /* Create the overlay immediately */
     CreateOverlay();
 
@@ -187,10 +205,11 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
 
 /*
  * Handles all messages for the hidden main window:
- *   WM_TIMER:    Dispatches timer events to the appropriate handler
- *   WM_TRAYICON: Responds to clicks on the system tray icon
- *   WM_COMMAND:  Handles context menu item selections
- *   WM_DESTROY:  Performs cleanup before the application exits
+ *   WM_TIMER:             Dispatches timer events to the appropriate handler
+ *   WM_TRAYICON:          Responds to clicks on the system tray icon
+ *   WM_UPDATE_CHECK_DONE: Processes the result of the background update check
+ *   WM_COMMAND:           Handles context menu item selections
+ *   WM_DESTROY:           Performs cleanup before the application exits
  */
 static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam,
                                 LPARAM lParam)
@@ -236,6 +255,37 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam,
         }
         return 0;
 
+    case WM_UPDATE_CHECK_DONE: {
+        /*
+         * Posted by the background CheckUpdateThread when it finishes.
+         *   wParam: status (1=update available, 0=up to date, -1=error)
+         *   lParam: isManual (TRUE if user triggered, FALSE if startup)
+         *
+         * On silent startup checks, only show a balloon if an update is
+         * available. Manual checks always show feedback.
+         */
+        int status = (int)wParam;
+        BOOL isManual = (BOOL)lParam;
+
+        if (status == 1) {
+            g_updateState = UPDATE_AVAILABLE;
+            WCHAR msg[128];
+            wsprintfW(msg, L"Update to %s available!", g_updateVersion);
+            ShowBalloon(L"ForceComposedFlip Update", msg);
+        } else if (status == 0) {
+            g_updateState = UPDATE_LATEST;
+            if (isManual)
+                ShowBalloon(L"ForceComposedFlip Update",
+                            L"ForceComposedFlip is up to date.");
+        } else {
+            g_updateState = UPDATE_UNKNOWN;
+            if (isManual)
+                ShowBalloon(L"ForceComposedFlip Update",
+                            L"Failed to check for updates.");
+        }
+        return 0;
+    }
+
     case WM_COMMAND:
         /* Handle context menu item selections */
         switch (LOWORD(wParam)) {
@@ -244,6 +294,21 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam,
             break;
         case IDM_AUTOSTART:
             SetAutoStart(!IsAutoStartEnabled());
+            break;
+        case IDM_CHECK_UPDATE:
+            if (g_updateState == UPDATE_AVAILABLE) {
+                /* Open the releases page so the user can download */
+                ShellExecuteW(NULL, L"open",
+                    L"https://github.com/fernandoenzo/ForceComposedFlip/releases/latest",
+                    NULL, NULL, SW_SHOWNORMAL);
+            } else if (g_updateState != UPDATE_CHECKING) {
+                /* Trigger a manual check with user feedback */
+                g_updateState = UPDATE_CHECKING;
+                ShowBalloon(L"ForceComposedFlip Update",
+                            L"Checking for updates...");
+                CreateThread(NULL, 0, CheckUpdateThread,
+                             (LPVOID)TRUE, 0, NULL);
+            }
             break;
         case IDM_EXIT:
             CleanExit();
@@ -515,6 +580,7 @@ static void ShowBalloon(const WCHAR *title, const WCHAR *text)
  *   ─────────────────────────────
  *   "✓ Start with Windows"             (checkmark toggle)
  *   ─────────────────────────────
+ *   "Check for updates"                (dynamic text based on state)
  *   "Exit"
  */
 static void ShowContextMenu(void)
@@ -539,6 +605,22 @@ static void ShowContextMenu(void)
                 MF_STRING | (IsAutoStartEnabled() ? MF_CHECKED : MF_UNCHECKED),
                 IDM_AUTOSTART, L"Start with Windows");
     AppendMenuW(hMenu, MF_SEPARATOR, 0, NULL);
+
+    /* Update checker — dynamic text reflects background check state */
+    if (g_updateState == UPDATE_AVAILABLE) {
+        WCHAR msg[128];
+        wsprintfW(msg, L"Update to %s available!", g_updateVersion);
+        AppendMenuW(hMenu, MF_STRING, IDM_CHECK_UPDATE, msg);
+    } else if (g_updateState == UPDATE_CHECKING) {
+        AppendMenuW(hMenu, MF_STRING | MF_GRAYED | MF_DISABLED,
+                    IDM_CHECK_UPDATE, L"Checking for updates...");
+    } else if (g_updateState == UPDATE_LATEST) {
+        AppendMenuW(hMenu, MF_STRING, IDM_CHECK_UPDATE,
+                    L"Check for updates (latest)");
+    } else {
+        AppendMenuW(hMenu, MF_STRING, IDM_CHECK_UPDATE,
+                    L"Check for updates");
+    }
 
     AppendMenuW(hMenu, MF_STRING, IDM_EXIT, L"Exit");
 
@@ -740,6 +822,103 @@ static void SetAutoStart(BOOL enable)
     }
 
     RegCloseKey(hKey);
+}
+
+/* ─── Update Checker ────────────────────────────────────────────────── */
+
+/*
+ * Background thread that checks GitHub for a newer release.
+ *
+ * Sends an HTTPS HEAD request to the "releases/latest" URL, which
+ * GitHub 302-redirects to /releases/tag/<version>. The final URL is
+ * retrieved after the redirect and the version tag is extracted from
+ * the last path segment. Compared against the compile-time
+ * VERSION_STRING to determine if an update is available.
+ *
+ * Communicates the result back to the main thread via PostMessageW
+ * (WM_UPDATE_CHECK_DONE) so all UI updates happen on the message
+ * loop thread — no cross-thread window access.
+ *
+ * lpParam: FALSE for silent startup check, TRUE for manual user check.
+ */
+static DWORD WINAPI CheckUpdateThread(LPVOID lpParam)
+{
+    BOOL isManual = (BOOL)(UINT_PTR)lpParam;
+    int status = -1;
+
+    HINTERNET hSession = InternetOpenW(
+        L"ForceComposedFlip", INTERNET_OPEN_TYPE_PRECONFIG,
+        NULL, NULL, 0);
+
+    if (hSession) {
+        DWORD timeout = 5000;
+        InternetSetOptionW(hSession, INTERNET_OPTION_CONNECT_TIMEOUT,
+                           &timeout, sizeof(timeout));
+        InternetSetOptionW(hSession, INTERNET_OPTION_SEND_TIMEOUT,
+                           &timeout, sizeof(timeout));
+        InternetSetOptionW(hSession, INTERNET_OPTION_RECEIVE_TIMEOUT,
+                           &timeout, sizeof(timeout));
+
+        HINTERNET hConnect = InternetConnectW(
+            hSession, L"github.com", INTERNET_DEFAULT_HTTPS_PORT,
+            NULL, NULL, INTERNET_SERVICE_HTTP, 0, 0);
+
+        if (hConnect) {
+            /*
+             * HEAD request — we only need the redirect URL, not the body.
+             * Aggressive cache-bypass flags ensure we always hit GitHub,
+             * not a cached response from a corporate proxy.
+             */
+            HINTERNET hReq = HttpOpenRequestW(
+                hConnect, L"HEAD",
+                L"/fernandoenzo/ForceComposedFlip/releases/latest",
+                NULL, NULL, NULL,
+                INTERNET_FLAG_SECURE | INTERNET_FLAG_RELOAD |
+                INTERNET_FLAG_NO_CACHE_WRITE |
+                INTERNET_FLAG_PRAGMA_NOCACHE, 0);
+
+            if (hReq) {
+                HttpAddRequestHeadersW(
+                    hReq, L"Cache-Control: no-cache\r\n",
+                    -1, HTTP_ADDREQ_FLAG_ADD);
+
+                if (HttpSendRequestW(hReq, NULL, 0, NULL, 0)) {
+                    /*
+                     * After the 302 redirect, INTERNET_OPTION_URL gives
+                     * the final URL, e.g.:
+                     *   https://github.com/.../releases/tag/1.5
+                     * Extract the version from the last '/' segment.
+                     */
+                    WCHAR szUrl[512] = {0};
+                    DWORD dwSize = sizeof(szUrl);
+                    if (InternetQueryOptionW(hReq, INTERNET_OPTION_URL,
+                                             szUrl, &dwSize)) {
+                        WCHAR *pTag = wcsrchr(szUrl, L'/');
+                        if (pTag) {
+                            pTag++;
+                            /* Strip leading 'v' or 'V' prefix if present */
+                            if (*pTag == L'v' || *pTag == L'V')
+                                pTag++;
+                            if (lstrcmpW(pTag, VERSION_STRING) != 0) {
+                                status = 1; /* Update available */
+                                lstrcpynW(g_updateVersion, pTag,
+                                    sizeof(g_updateVersion) / sizeof(WCHAR));
+                            } else {
+                                status = 0; /* Up to date */
+                            }
+                        }
+                    }
+                }
+                InternetCloseHandle(hReq);
+            }
+            InternetCloseHandle(hConnect);
+        }
+        InternetCloseHandle(hSession);
+    }
+
+    PostMessageW(g_hwndMain, WM_UPDATE_CHECK_DONE,
+                 (WPARAM)status, (LPARAM)isManual);
+    return 0;
 }
 
 /* ─── Clean Exit ────────────────────────────────────────────────────── */

@@ -56,6 +56,7 @@ The version string is derived from `git describe --tags --dirty` in the Makefile
 - `CreateMutexW` — enforces single instance
 - `RegOpenKeyExW` / `RegQueryValueExW` — reads MPO and auto-start registry state
 - `RegSetValueExW` / `RegDeleteValueW` — writes auto-start registry value (`HKCU\...\Run`)
+- WinINet (`InternetOpenW`, `InternetConnectW`, `HttpOpenRequestW`, `InternetQueryOptionW`) — background update checker via HTTPS HEAD to GitHub releases
 
 ## Conventions
 
