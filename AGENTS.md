@@ -42,6 +42,8 @@ make clean
 
 This produces `ForceComposedFlip.exe`, a standalone Windows executable with the icon embedded as a resource.
 
+The version string is derived from `git describe --tags --dirty` in the Makefile and passed to the compiler as `-DVERSION_STRING=L\"$(VERSION)\"`. Builds are reproducible via `SOURCE_DATE_EPOCH` (set from the git commit timestamp).
+
 ## Key Win32 APIs Used
 
 - `CreateWindowExW` with `WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_TRANSPARENT | WS_EX_LAYERED` — overlay window

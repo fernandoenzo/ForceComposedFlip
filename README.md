@@ -164,6 +164,8 @@ make clean && make
 
 This produces `ForceComposedFlip.exe`, a standalone Windows executable with the application icon embedded as a resource.
 
+The version string is derived automatically from git tags via `git describe --tags --dirty`. It appears in the tray tooltip, context menu header, and is used for update checking. Builds are reproducible: `SOURCE_DATE_EPOCH` is set from the git commit timestamp so identical source and toolchain produce identical binaries.
+
 ## License
 
 This project is licensed under the [GNU General Public License v3 or later (GPLv3+)](https://choosealicense.com/licenses/gpl-3.0/).

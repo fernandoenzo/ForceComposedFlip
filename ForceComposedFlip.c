@@ -420,7 +420,7 @@ static void SetupTrayIcon(void)
     g_nid.uFlags           = NIF_ICON | NIF_MESSAGE | NIF_TIP;
     g_nid.uCallbackMessage = WM_TRAYICON;
     g_nid.hIcon            = g_hIcon;
-    lstrcpyW(g_nid.szTip, L"ForceComposedFlip - Waiting for game...");
+    lstrcpyW(g_nid.szTip, L"ForceComposedFlip " VERSION_STRING);
 
     Shell_NotifyIconW(NIM_ADD, &g_nid);
 }
@@ -439,8 +439,8 @@ static void RemoveTrayIcon(void)
 
 /*
  * Updates the tray tooltip text.
- * If text is NULL, generates the default "Active" tooltip with the
- * current local time in HH:mm:ss format.
+ * If text is NULL, generates the default tooltip with the version
+ * string and current local time in HH:mm:ss format.
  */
 static void UpdateTooltip(const WCHAR *text)
 {
@@ -448,11 +448,12 @@ static void UpdateTooltip(const WCHAR *text)
         lstrcpynW(g_nid.szTip, text,
                   sizeof(g_nid.szTip) / sizeof(WCHAR));
     } else {
-        /* Build "ForceComposedFlip - Active (HH:mm:ss)" */
+        /* Build "ForceComposedFlip <version> - Active (HH:mm:ss)" */
         SYSTEMTIME st;
         GetLocalTime(&st);
         wsprintfW(g_nid.szTip,
-                  L"ForceComposedFlip - Active (%02d:%02d:%02d)",
+                  L"ForceComposedFlip " VERSION_STRING
+                  L" - Active (%02d:%02d:%02d)",
                   st.wHour, st.wMinute, st.wSecond);
     }
     g_nid.uFlags = NIF_TIP;
@@ -463,7 +464,7 @@ static void UpdateTooltip(const WCHAR *text)
  * Shows the tray context menu at the current cursor position.
  *
  * Menu layout:
- *   "ForceComposedFlip - Active"       (disabled header label)
+ *   "ForceComposedFlip <version>"       (disabled header label)
  *   ─────────────────────────────
  *   "Disable MPO (add registry key)"
  *   "Enable MPO (remove registry key)"
@@ -477,7 +478,7 @@ static void ShowContextMenu(void)
 
     /* Header label — grayed out, not clickable */
     AppendMenuW(hMenu, MF_STRING | MF_GRAYED, 0,
-                L"ForceComposedFlip - Active");
+                L"ForceComposedFlip " VERSION_STRING);
     AppendMenuW(hMenu, MF_SEPARATOR, 0, NULL);
 
     AppendMenuW(hMenu, MF_STRING, IDM_DISABLE_MPO,
