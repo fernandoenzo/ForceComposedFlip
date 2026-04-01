@@ -96,10 +96,9 @@ Both Borderless Windowed and Fullscreen (FSO) work identically with this solutio
 
 Right-click the gamepad icon in the system tray:
 
-- **Recreate overlay now** — Manually destroys and recreates the invisible window. Normally not needed as the script auto-detects foreground window changes.
 - **Disable MPO (add registry key)** — Adds the MPO disable registry key. Prompts for admin permission. Asks if you want to restart DWM immediately to apply without rebooting.
 - **Enable MPO (remove registry key)** — Removes the registry key. Same admin and DWM restart prompts.
-- **Exit** — Closes the script and removes the overlay window.
+- **Exit** — Closes the program and removes the overlay window.
 
 ## Performance Impact
 

@@ -36,10 +36,9 @@
 #define WM_TRAYICON             (WM_APP + 1)
 
 /* Menu item IDs for the tray context menu */
-#define IDM_RECREATE            1001
-#define IDM_DISABLE_MPO         1002
-#define IDM_ENABLE_MPO          1003
-#define IDM_EXIT                1004
+#define IDM_DISABLE_MPO         1001
+#define IDM_ENABLE_MPO          1002
+#define IDM_EXIT                1003
 
 /* Mutex name to enforce single instance */
 #define MUTEX_NAME              L"ForceComposedFlip_SingleInstance"
@@ -88,7 +87,6 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
     /*
      * Enforce single instance: create a named mutex. If it already exists,
      * another instance is running — exit immediately.
-     * This mirrors AHK's #SingleInstance Force directive.
      */
     HANDLE hMutex = CreateMutexW(NULL, TRUE, MUTEX_NAME);
     if (GetLastError() == ERROR_ALREADY_EXISTS) {
@@ -224,9 +222,6 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam,
     case WM_COMMAND:
         /* Handle context menu item selections */
         switch (LOWORD(wParam)) {
-        case IDM_RECREATE:
-            RecreateOverlay();
-            break;
         case IDM_DISABLE_MPO:
             SetMPO(TRUE);
             break;
@@ -467,10 +462,8 @@ static void UpdateTooltip(const WCHAR *text)
 /*
  * Shows the tray context menu at the current cursor position.
  *
- * The menu mirrors the AHK version exactly:
+ * Menu layout:
  *   "ForceComposedFlip - Active"       (disabled header label)
- *   ─────────────────────────────
- *   "Recreate overlay now"
  *   ─────────────────────────────
  *   "Disable MPO (add registry key)"
  *   "Enable MPO (remove registry key)"
@@ -485,10 +478,6 @@ static void ShowContextMenu(void)
     /* Header label — grayed out, not clickable */
     AppendMenuW(hMenu, MF_STRING | MF_GRAYED, 0,
                 L"ForceComposedFlip - Active");
-    AppendMenuW(hMenu, MF_SEPARATOR, 0, NULL);
-
-    AppendMenuW(hMenu, MF_STRING, IDM_RECREATE,
-                L"Recreate overlay now");
     AppendMenuW(hMenu, MF_SEPARATOR, 0, NULL);
 
     AppendMenuW(hMenu, MF_STRING, IDM_DISABLE_MPO,
