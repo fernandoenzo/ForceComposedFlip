@@ -1,4 +1,14 @@
-# ForceComposedFlip
+<p align="center">
+  <img src="ForceComposedFlip.svg" alt="ForceComposedFlip" width="128">
+</p>
+<h1 align="center">ForceComposedFlip</h1>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/C-Win32-blue" alt="C/Win32">
+  <img src="https://img.shields.io/badge/Windows-11-blue" alt="Windows 11">
+  <img src="https://img.shields.io/badge/License-GPLv3+-red" alt="License: GPLv3+">
+  <img src="https://img.shields.io/github/v/release/fernandoenzo/ForceComposedFlip" alt="GitHub Release">
+</p>
 
 Forces the Windows Desktop Window Manager (DWM) to use **Composed Flip** presentation instead of **Independent Flip**, enabling screen capture APIs (DXGI Desktop Duplication and Windows.Graphics.Capture) to capture **DLSS Frame Generation interpolated frames** when streaming with [Sunshine](https://github.com/LizardByte/Sunshine) + [Moonlight](https://github.com/moonlight-stream).
 
