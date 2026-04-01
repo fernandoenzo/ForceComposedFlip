@@ -512,6 +512,7 @@ static void ShowBalloon(const WCHAR *title, const WCHAR *text)
  *   "ForceComposedFlip <version>"       (disabled header label)
  *   ─────────────────────────────
  *   "✓ MPO disabled"                   (checkmark toggle)
+ *   ─────────────────────────────
  *   "✓ Start with Windows"             (checkmark toggle)
  *   ─────────────────────────────
  *   "Exit"
@@ -531,6 +532,7 @@ static void ShowContextMenu(void)
     AppendMenuW(hMenu,
                 MF_STRING | (mpoDisabled ? MF_CHECKED : MF_UNCHECKED),
                 IDM_TOGGLE_MPO, L"MPO disabled");
+    AppendMenuW(hMenu, MF_SEPARATOR, 0, NULL);
 
     /* Auto-start toggle — checkmark reflects HKCU\...\Run value */
     AppendMenuW(hMenu,
